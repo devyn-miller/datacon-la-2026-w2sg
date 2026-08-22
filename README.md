@@ -1,6 +1,6 @@
 Weak-to-strong generalization for reranking
 
-[Presentation Slides - Datacon 2026](Presentation Slides - Datacon 2026.pdf)
+[Presentation Slides - Datacon 2026](https://github.com/devyn-miller/datacon-la-2026-w2sg/blob/main/Presentation%20Slides%20-%20Datacon%202026.pdf)
 
 Reference implementation for the DataConLA 2026 talk on training a strong
 cross-encoder reranker on weak, noisy labels (BM25, a small distilled
