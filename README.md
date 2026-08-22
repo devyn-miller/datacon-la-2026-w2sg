@@ -1,5 +1,7 @@
 Weak-to-strong generalization for reranking
 
+[Presentation Slides - Datacon 2026](Presentation Slides - Datacon 2026.pdf)
+
 Reference implementation for the DataConLA 2026 talk on training a strong
 cross-encoder reranker on weak, noisy labels (BM25, a small distilled
 reranker, click logs) without just teaching it to reproduce those signals'
@@ -34,7 +36,6 @@ walks through:
    labeler missed. Recall@100 against gold is computed and checked here
    unconditionally; it raises if it's below `candidates.min_acceptable_recall`,
    because every ranking metric downstream is upper-bounded by it.
-
 2. __`weak_scores.py`__ — scores every pool candidate with each weak source
    independently: BM25, a dense bi-encoder (reusing stage 1's embeddings),
    `cross-encoder/ms-marco-MiniLM-L-6-v2` (top-k only; everything outside
@@ -44,13 +45,11 @@ walks through:
    position bias — see `_simulate_debiased_ctr`). The CTR source only ever
    runs on the train split; building it needs qrels, and running it against
    test qrels would leak gold into a signal the eval treats as "weak."
-
 3. __`rank_normalize.py`__ — converts each source's raw scores to
    within-query ranks (raw scores aren't comparable across sources or
    queries), fuses them with RRF (`1/(k+rank)`, k=60, Cormack et al. 2009),
    and softmaxes the fused weight with a temperature to get a soft target
    distribution per query.
-
 4. **`confidence.py`** — three label-free reliability signals per candidate:
    agreement (fraction of sources that place it in their own top-k), margin
    (score gap to the next-ranked candidate, normalized per-source by that
@@ -60,7 +59,6 @@ walks through:
    candidates below a hard margin/agreement floor are gated out entirely.
    Gating happens *before* the smooth weight is computed, so a gated
    candidate contributes exactly zero gradient instead of a diluted one.
-
 5. **`loss.py`** + **`train.py`** — the loss itself:
 
 ```md
