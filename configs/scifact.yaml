@@ -1,0 +1,118 @@
+# Reference configuration for the scifact BEIR subset.
+#
+# These are the numbers we'd actually run with on a GPU for the talk's
+# headline ablation. `configs/demo.yaml` overrides a handful of them so the
+# whole pipeline finishes on a laptop CPU in a few minutes. See the README
+# for which is which.
+
+# Pulls real checkpoints from the Hugging Face Hub (see models.py). Set to
+# true only if you're on a machine without Hub access; see
+# configs/synthetic_smoke.yaml, and don't trust numbers produced this way.
+offline: false
+
+dataset:
+  name: scifact
+  data_dir: ./data/beir
+  # scifact ships train (809 queries) and test (300 queries) qrels. Train is
+  # where every weak label gets built and where the model trains; test qrels
+  # are touched nowhere except stage 6. Mixing these leaks gold into the
+  # "weak" signal and makes the whole ablation meaningless.
+  train_split: train
+  eval_split: test
+
+candidates:
+  bm25_top_k: 100
+  dense_top_k: 100
+  n_random_negatives: 20
+  # cap on the union pool size per query after dedup, so downstream batches
+  # have a predictable upper bound
+  max_pool_size: 150
+  dense_encoder: sentence-transformers/all-MiniLM-L6-v2
+  recall_k: 100
+  # Stage 1 refuses to hand back a pool without having computed this first.
+  min_acceptable_recall: 0.6
+
+weak_sources:
+  bm25: true
+  # reuses the stage-1 retrieval embeddings, "already logged" per the talk's
+  # marginal-cost table, no extra forward passes needed
+  dense_bi_encoder:
+    enabled: true
+  small_cross_encoder:
+    enabled: true
+    model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
+    max_length: 256
+    # the small reranker only scores its own top-k, everything else is
+    # "unknown" (see weak_scores.py) rather than assigned a fake low score
+    score_top_k: 50
+  debiased_ctr:
+    # BEIR has no click logs. scifact has none either, so this always fires
+    # here; on a dataset with real logs you'd set enabled: false.
+    enabled: true
+    n_sessions_per_query: 200
+    # examination(rank) = rank^-eta ; 1.0 is a mild, textbook-standard decay
+    # (Joachims et al. use ~1 for the "position bias" baseline curve)
+    position_bias_eta: 1.0
+    # click-through Bernoulli noise on top of the position-scaled relevance,
+    # so the propensity-corrected signal doesn't just reduce to gold
+    click_noise_std: 0.15
+
+rank_normalize:
+  rrf_k: 60 # Cormack et al. 2009; see rank_normalize.py for why we keep it
+  temperature: 0.5
+
+confidence:
+  agreement_top_k: 10
+  # candidate pairs below this margin are gated out entirely rather than
+  # down-weighted. Margin is normalized per-source-per-query by that
+  # source's own score range, so 0.02 means "2% of this source's spread to
+  # the next candidate" regardless of whether the source is BM25 (raw range
+  # in the tens) or a bi-encoder (cosine similarity, range < 2)
+  min_margin: 0.02
+  min_agreeing_sources: 2
+  # blend weights for agreement / margin / (1 - normalized entropy); these
+  # sum to 1 and were picked to make agreement the dominant term since it's
+  # the cheapest signal to trust (see confidence.py)
+  w_agreement: 0.5
+  w_margin: 0.3
+  w_entropy: 0.2
+  kendall_tau_correlation_threshold: 0.9
+
+model:
+  student: cross-encoder/ms-marco-MiniLM-L-12-v2
+  max_length: 256
+
+train:
+  # candidates scored per query in one listwise training step. 16 keeps a
+  # forward pass under a second on CPU while still giving RRF/softmax
+  # enough spread to be meaningful
+  list_size: 16
+  # number of query-lists per optimizer step
+  batch_size: 8
+  lr: 2.0e-5
+  epochs: 3
+  weight_decay: 0.01
+  warmup_frac: 0.06
+  # alpha ramps as a function of *fraction of total steps*, not step count,
+  # so it's portable across dataset sizes without re-tuning
+  alpha_ceiling: 0.4
+  alpha_ramp_start_frac: 0.3
+  alpha_ramp_end_frac: 0.7
+  # sharpening temperature for the self-term target. Lower = harder targets,
+  # sooner to collapse; 0.5 is the point where the self-term still smooths
+  # over single-candidate noise but has a real preference
+  self_term_tau: 0.5
+  seed: 42
+  eval_every_steps: 40
+  max_grad_norm: 1.0
+
+eval:
+  ndcg_k: 10
+  agreement_k: 10
+  ece_bins: 10
+  frequency_deciles: 10
+
+failure_modes:
+  agreement_never_declines_tolerance: 0.03
+  collapse_ndcg_drop_threshold: 0.08
+  collapse_agreement_drop_threshold: 0.08

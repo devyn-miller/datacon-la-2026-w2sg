@@ -1,0 +1,83 @@
+# Fully offline smoke config: a tiny locally-generated BEIR-formatted dataset
+# (scripts/make_synthetic_beir.py) plus randomly-initialized tiny models
+# (w2sg/models.py, offline: true). No network access required anywhere.
+#
+# This proves the six stages wire together, the loss doesn't NaN, and the
+# ablation script runs to completion. It says nothing about ranking quality.
+# For real numbers, use configs/scifact.yaml on a machine with Hugging Face
+# Hub access.
+
+offline: true
+
+dataset:
+  name: synthetic_demo
+  data_dir: ./data/beir
+  train_split: train
+  eval_split: test
+
+candidates:
+  bm25_top_k: 15
+  dense_top_k: 15
+  n_random_negatives: 5
+  max_pool_size: 25
+  dense_encoder: offline-tiny-bert
+  recall_k: 25
+  min_acceptable_recall: 0.5
+
+weak_sources:
+  bm25: true
+  dense_bi_encoder:
+    enabled: true
+  small_cross_encoder:
+    enabled: true
+    model_name: offline-tiny-bert
+    max_length: 64
+    score_top_k: 15
+  debiased_ctr:
+    enabled: true
+    n_sessions_per_query: 200
+    position_bias_eta: 1.0
+    click_noise_std: 0.15
+
+rank_normalize:
+  rrf_k: 60
+  temperature: 0.5
+
+confidence:
+  agreement_top_k: 5
+  min_margin: 0.02
+  min_agreeing_sources: 2
+  w_agreement: 0.5
+  w_margin: 0.3
+  w_entropy: 0.2
+  kendall_tau_correlation_threshold: 0.9
+
+model:
+  student: offline-tiny-bert
+  max_length: 64
+
+train:
+  list_size: 8
+  batch_size: 4
+  lr: 5.0e-4
+  epochs: 2
+  weight_decay: 0.01
+  warmup_frac: 0.1
+  alpha_ceiling: 0.4
+  alpha_ramp_start_frac: 0.3
+  alpha_ramp_end_frac: 0.7
+  self_term_tau: 0.5
+  seed: 42
+  eval_every_steps: 5
+  max_grad_norm: 1.0
+
+eval:
+  ndcg_k: 10
+  agreement_k: 10
+  ece_bins: 5
+  frequency_deciles: 5
+
+failure_modes:
+  agreement_never_declines_tolerance: 0.03
+  collapse_ndcg_drop_threshold: 0.08
+  collapse_agreement_drop_threshold: 0.08

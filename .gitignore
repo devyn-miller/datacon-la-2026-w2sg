@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# BEIR downloads and generated artifacts. regenerate with scripts/run_ablation.py
+data/
+results/*.json
+results/*.csv
+!results/.gitkeep
+
+.venv/
+venv/
+*.log

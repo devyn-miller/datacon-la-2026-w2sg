@@ -1,0 +1,20 @@
+# Overrides on top of scifact.yaml for a CPU demo run. scifact's full train
+# split is 809 queries; scoring all of them with a cross-encoder five times
+# (once per ablation arm) is a GPU job. This trims to something that proves
+# the mechanism in minutes instead of hours. See README for scaling back up.
+#
+# Merge semantics: scripts/run_ablation.py loads scifact.yaml first, then
+# applies these keys on top.
+
+candidates:
+  max_pool_size: 60
+  bm25_top_k: 60
+  dense_top_k: 60
+
+train:
+  list_size: 10
+  batch_size: 8
+  epochs: 1
+  eval_every_steps: 30
+  max_train_queries: 50
+  max_eval_queries: 30
