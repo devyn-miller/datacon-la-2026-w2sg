@@ -8,11 +8,11 @@ reranker, click logs) without just teaching it to reproduce those signals'
 mistakes.
 
 Standard practice fine-tunes a reranker with cross-entropy against whatever
-weak label you have. That objective's global minimum is "match the weak
-label everywhere," including everywhere the weak label is wrong. Nothing in
+weak label you have. That objective's global minimum is to strictly match the weak
+label, including everywhere the weak label is wrong. Nothing in
 plain CE rewards being *more* correct than the thing supervising you. This
 repo implements the fix: a confidence-aware loss that adds a scheduled
-self-consistency term the weak labeler doesn't control, plus the
+self-consistency term the weak labeler doesn't control as well as the
 instrumentation to prove it actually recovered capability instead of just
 producing a model that agrees with itself more confidently.
 
@@ -24,10 +24,9 @@ for weak IR supervision is Dehghani et al., SIGIR 2017
 click-through debiasing is Joachims et al., WSDM 2017; the dataset is BEIR
 (Thakur et al., 2021).
 
-## The six stages
+## 6 stages
 
-Each is its own module under `src/w2sg/`, matching the boundaries the talk
-walks through:
+Each is its own module under `src/w2sg/`:
 
 1. __`candidates.py`__ — candidate pool per query, as a union of BM25 top-k,
    dense bi-encoder top-k, and random negatives. Never just "whatever the
@@ -195,13 +194,3 @@ tests/               loss.py and rank_normalize.py unit tests
 results/             ablation_table.md and timestamped JSON reports land here
 ```
 
-## What this doesn't do
-
-The self-consistency term needs a real capability gap between the weak
-labeler and the student, calibrated student confidence, and gold data to
-verify against. It won't help where the student and
-supervisor are close in ability, and it can actively hurt on tasks where the
-student's own confident predictions are systematically wrong in a direction
-CE against gold would have corrected (inverse-scaling-shaped tasks). None of
-that is specific to retrieval; it's why stages 4 and 6 exist instead of just
-stage 5.
