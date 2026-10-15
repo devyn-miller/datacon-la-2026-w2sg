@@ -7,14 +7,7 @@ cross-encoder reranker on weak, noisy labels (BM25, a small distilled
 reranker, click logs) without just teaching it to reproduce those signals'
 mistakes.
 
-Standard practice fine-tunes a reranker with cross-entropy against whatever
-weak label you have. That objective's global minimum is to strictly match the weak
-label, including everywhere the weak label is wrong. Nothing in
-plain CE rewards being *more* correct than the thing supervising you. This
-repo implements the fix: a confidence-aware loss that adds a scheduled
-self-consistency term the weak labeler doesn't control as well as the
-instrumentation to prove it actually recovered capability instead of just
-producing a model that agrees with itself more confidently.
+Standard practice fine-tunes a reranker with cross-entropy against whatever weak label you have. That objective’s global minimum is the weak label itself, including everywhere the weak label is wrong. Nothing in plain CE rewards being more correct than the thing supervising you. This repo implements a confidence-aware loss with a scheduled self-consistency term that the weak labeler does not control. It also includes an implementation to show the gains in recovered capability, measured separately from how confidently the model agrees with itself.
 
 Background: Burns et al., *Weak-to-Strong Generalization*
 ([arXiv:2312.09390](https://arxiv.org/abs/2312.09390)); the RRF fusion is
@@ -26,11 +19,10 @@ click-through debiasing is Joachims et al., WSDM 2017; the dataset is BEIR
 
 ## 6 stages
 
-Each is its own module under `src/w2sg/`:
+Each stage is its own module under `src/w2sg/`:
 
 1. __`candidates.py`__ — candidate pool per query, as a union of BM25 top-k,
-   dense bi-encoder top-k, and random negatives. Never just "whatever the
-   weak labeler already ranked" — if the pool-builder and the labeler are
+   dense bi-encoder top-k, and random negatives. If the pool-builder and the labeler are
    the same system, the student can never learn about a document the
    labeler missed. Recall@100 against gold is computed and checked here
    unconditionally; it raises if it's below `candidates.min_acceptable_recall`,
@@ -70,13 +62,12 @@ only after the model has learned the basic task from the weak targets.
 Turning the self-term on at step 0 makes it lock onto the randomly
 initialized head's arbitrary first guesses. `train.py` builds the
 listwise training batches and implements the five ablation variants as
-flag combinations (`VariantFlags` in `train.py`), not five copies of the
-training loop.
+flag combinations (`VariantFlags` in `train.py`).
 
-6. **`evaluate.py`** — the four numbers that matter, computed every eval
+6. **`evaluate.py`** — the four main evaluation metrics, which are computed at every evaluation
    step: **nDCG@10** against gold (the only unbiased signal anywhere in this
    pipeline), **Agreement@10** with the weak labeler (should decline from
-   fine-tuning, then plateau — if it never declines, alpha's ceiling is too
+   fine-tuning, then plateau; if it never declines, alpha's ceiling is too
    low or the ramp starts too late), **disagreement precision** (when the
    student and the weak labeler disagree on a pair's relative order, how
    often is the student's order actually right against gold, so if below 0.5,
@@ -93,15 +84,13 @@ Five runnable checks, not just numbers to eyeball:
 - __Self-reinforcing collapse__ — nDCG and agreement both drop sharply once
    alpha crosses a threshold. This doesn't recover mid-run, so
    `check_self_reinforcing_collapse` is wired into `train.py`'s eval callback
-   and aborts the run early rather than burning the rest of the compute
-   budget on a run that's already lost.
+   and aborts the run early.
 - __Correlated weak sources__ — Kendall's tau between every pair of weak
    sources; above `confidence.kendall_tau_correlation_threshold` (default
    0.9) they're not independent votes, and `run_ablation.py` auto-collapses
    them before stage 3 runs.
 - __Pool recall ceiling__ — stage 1 already raises on this; `check_pool_recall`
-   re-surfaces the same check in the final report so it can't be missed by
-   anyone who calls `evaluate_model` directly on a hand-built pool.
+   re-surfaces the same check in the final report.
 - __Head-query shift__ — BEIR ships no query-frequency data, so
    `synthetic_query_frequency` assigns a deterministic Zipfian-shaped decile
    per query (hash-based, reproducible), and `stratified_ndcg` reports
@@ -131,17 +120,17 @@ python scripts/run_ablation.py --config configs/synthetic_smoke.yaml
 This generates a small synthetic BEIR-formatted dataset locally and swaps
 every model for a randomly-initialized tiny transformer built from local
 code (`w2sg/models.py`, `offline: true`); no `huggingface.co` or BEIR-host
-access required anywhere. It exists to prove the six stages actually wire
+access required anywhere. It's meant to prove the six stages work
 together, gradients flow, the loss doesn't NaN, and the ablation script
-runs to completion; __it says nothing about ranking quality.__ A concrete
+runs to completion; __note: it says nothing about ranking quality.__ A concrete
 example of why: in `results/ablation_table.md` (checked into this repo,
 generated by an actual offline run) BM25 beats every trained arm, because
 "trained" here means a 2-layer, hidden-size-32 network with a hashing
 tokenizer getting ~8 gradient steps on 15 queries, which is nowhere near enough
 capacity or data to beat exact lexical match on a synthetic bag-of-words
 task. That inversion is expected in this mode and is _not_ evidence against
-the method — rerun with `configs/scifact.yaml` on a machine with Hub access
-for numbers that mean anything.
+the method; rerun with `configs/scifact.yaml` on a machine with Hub access
+for meaningful results.
 
 ### Tests
 
@@ -154,7 +143,7 @@ weighted CE, alpha=1 ignoring the weak target, the `.detach()` gradient
 contract, gated candidates contributing exactly zero gradient, the
 padding-mask NaN trap) and `rank_normalize.py` (rank assignment, RRF fusion,
 target normalization, temperature effects, and that a source with no
-coverage for a query is skipped rather than treated as a unanimous "no").
+coverage for a query is skipped).
 These run in under two seconds with no data download and no model download.
 
 ## Config
